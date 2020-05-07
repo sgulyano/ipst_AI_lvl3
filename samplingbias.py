@@ -1,145 +1,103 @@
+import numpy as np
+import plotly.graph_objs as go
 import dash
 import dash_core_components as dcc
 import dash_html_components as html
 from dash.dependencies import Input, Output
-import plotly.graph_objects as go
-import pandas as pd
-import numpy as np
-from sklearn import tree
-from sklearn.datasets import load_breast_cancer
-
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_squared_error
 
 external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 
 app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 
+x = np.random.rand(100)*10 - 5
+y = 5/(1 + np.exp(-x)) + np.random.randn(100)
+# x = np.random.rand(100)
+# y = np.random.rand(100)
 
-##
-data = load_breast_cancer()
-X = data['data'][:,:2]
-y = data['target']
+x_min, x_max = x.min() - 0.1, x.max() + 0.1
+y_min, y_max = y.min() - 0.1, y.max() + 0.1
 
-idx = np.random.choice(np.where(y==0)[0], size=int(np.sum(y==1)*0.1), replace=False)
+f_input = go.Figure([go.Scatter(x=x, y=y, mode='markers')],
+                    layout=go.Layout(
+                        title='ข้อมูลทั้งหมด',
+                        xaxis=dict(range=[x_min, x_max]),
+                        xaxis_title='X',
+                        yaxis=dict(range=[y_min, y_max]),
+                        yaxis_title='Y',
+))
+f_input.layout.dragmode = 'lasso'
+reg = LinearRegression().fit(x.reshape(x.size,1), y)
+y_pred_best = reg.predict([[x_min], [x_max]])
 
-x_train = np.concatenate((X[y==1], X[idx]))
-y_train = np.concatenate((y[y==1], y[idx]))
+mse_best = mean_squared_error(y, reg.predict(x.reshape(x.size,1)))
 
-def get_fig(x_train, y_train):
-    clf = tree.DecisionTreeClassifier(random_state=0, max_depth=4, min_samples_split=10)
-    clf = clf.fit(x_train, y_train)
-    tree.plot_tree(clf)
-
-
-    plot_step = 0.1
-    x_min, x_max = X[:, 0].min() - 1, X[:, 0].max() + 1
-    y_min, y_max = X[:, 1].min() - 1, X[:, 1].max() + 1
-    xx, yy = np.meshgrid(np.arange(x_min, x_max, plot_step),
-                        np.arange(y_min, y_max, plot_step))
-
-    Z = clf.predict(np.c_[xx.ravel(), yy.ravel()])
-    Z = Z.reshape(xx.shape)
-
-    colorscale = [[0, 'peachpuff'], [1, 'lightcyan']]
-    fig = go.Figure(data = 
-                    go.Heatmap(
-                        z=Z,
-                        x=np.arange(x_min, x_max, plot_step),
-                        y=np.arange(y_min, y_max, plot_step),
-                        colorscale=colorscale,
-                        colorbar = dict(),
-                        showscale = False
-                        # colorbar=dict(nticks=10, ticks='outside',
-                        #               ticklen=5, tickwidth=1,
-                        #               showticklabels=True,
-                        #               tickangle=0, tickfont_size=12)
-                    ))
-
-    colors = ['red', 'blue']
-    for i, color in enumerate(colors):
-        idx = np.where(y_train == i)
-        fig.add_trace(go.Scatter(x=x_train[idx, 0].squeeze(), y=x_train[idx, 1].squeeze(),
-                                mode='markers',
-                                name=data.target_names[i], 
-                                marker_color=color))
-    return fig
-
-fig = get_fig(x_train, y_train)
-
-
-app.layout = html.Div([
-    html.H1(children='จำนวนข้อมูลที่ไม่สมดุลกัน (Imbalanced Data)'),
+app.layout = html.Div(children=[
+    html.H1(children='Sampling Bias'),
 
     html.Div(children='''
-        ในแบบฝึกหัดนี้ ให้นักเรียนลองใช้เทคนิค 1) การสุ่มข้อมูลจากกลุ่มหลักให้มีน้อยลง (Under-Sampling) และ 2) 
-การสร้างข้อมูลของกลุ่มย่อยให้มีมากขึ้น (Over-Sampling) แล้วลองสังเกต Decision Tree ผลลัพธ์ ที่ได้
+        ในกราฟทางซ้าย ให้ นักเรียน ลองเลือกจุดมาบางส่วน แล้วดูว่าผลลัพธ์ Linear Regression ที่ได้ ต่างจาก ถ้าใช้ข้อมูลทั้งหมดที่มีมากน้อยแค่ไหน
     '''),
-    html.Div(children=[
-        dcc.Markdown('### ชุดข้อมูล'),
-        dcc.Dropdown(
-            options=[
-                {'label': 'มะเร็งเต้านม', 'value': 'breast_cancer'},
-            ],
-            value='breast_cancer'
-        ),
-        
-        dcc.Markdown('### Under-Sampling'),
-        dcc.Slider(
-            id='under-spl-slider-id', 
-            min=10,
-            max=100,
-            marks={i: '{}%'.format(i) for i in range(10, 101, 10)},
-            value=100,
-        ),
 
-        dcc.Markdown('### Over-Sampling'),
-        dcc.Slider(
-            id='over-spl-slider-id', 
-            min=100,
-            max=1000,
-            marks={i: '{}%'.format(i) for i in range(100, 1001, 100)},
-            value=100,
-        )], 
-        style={'width': '30%', 'display': 'inline-block', 'vertical-align': 'top'}
-    ),
-    
     html.Div(children=[
-        dcc.Graph(id='graph-id', figure=fig),
-        ],
-        style={'width': '50%', 'display': 'inline-block'}
+        dcc.Graph(
+            id='input-graph',
+            figure=f_input
+        )],
+        style={'width': '50%', 'display': 'inline-block', 'vertical-align': 'top'}
+    ),
+
+    html.Div(children=[
+        dcc.Graph(
+            id='output-graph',
+            figure=go.Figure()
+        )],
+        style={'width': '50%', 'display': 'inline-block', 'vertical-align': 'top'}
+    ),
+
+    html.Div([
+        html.Div(id='accuracy-best-id', children=f'MSE = {mse_best:.3f}'),
+        html.Div(id='accuracy-id')
+    ],
+    style={'textAlign': 'center'}
     )
 ])
 
+@app.callback([Output(component_id='output-graph', component_property='figure'),
+               Output(component_id='accuracy-id', component_property='children')], 
+              [Input('input-graph', 'selectedData')])
+def display_selected_data(selectedData):
+    if selectedData and selectedData["points"]:
+        idx = [row['pointIndex'] for row in selectedData["points"]]
 
-def under_sampling(x_train, y_train, ratio):
-    num = int(np.sum(y_train==1)*ratio/100.0)
-    idx = np.where(y_train==1)[0][:num]
-    
-    x_new = np.concatenate((x_train[y_train==0], x_train[idx]))
-    y_new = np.concatenate((y_train[y_train==0], y_train[idx]))
-    return x_new, y_new
+        reg = LinearRegression().fit(x[idx].reshape(len(idx),1), y[idx])
+        mse = mean_squared_error(y, reg.predict(x.reshape(x.size,1)))
 
-def over_sampling(x_train, y_train, ratio):
-    n = np.sum(y_train==0)
-    num = int(n*ratio/100.0)
-    pos = np.arange(num) % np.sum(y_train==0)
+        y_pred = reg.predict([[x_min], [x_max]])
 
-    idx = np.where(y_train==0)[0][pos]
-    x_new = np.concatenate((x_train[idx], x_train[y_train==1]))
-    y_new = np.concatenate((y_train[idx], y_train[y_train==1]))
-    return x_new, y_new
-
-@app.callback(
-    Output(component_id='graph-id', component_property='figure'),
-    [Input(component_id='under-spl-slider-id', component_property='value'), 
-    Input(component_id='over-spl-slider-id', component_property='value')]
-)
-def update_under_div(under_ratio, over_ratio):
-    x_under, y_under = under_sampling(x_train, y_train, under_ratio)
-    x_new, y_new = over_sampling(x_under, y_under, over_ratio)
-    fig = get_fig(x_new, y_new)
-    return fig
-
+        f_output = go.Figure([go.Scatter(x=x[idx], y=y[idx], mode='markers', name="Selected Data"), 
+                              go.Scatter(x=[x_min, x_max], y=y_pred, mode='lines', name="Trend Line"),
+                              go.Scatter(x=[x_min, x_max], y=y_pred_best, mode='lines', name="Best Line")],
+                             layout=go.Layout(
+            title='ข้อมูลที่ใช้ Train โมเดล',
+            xaxis=dict(range=[x_min, x_max]),
+            xaxis_title='X',
+            yaxis=dict(range=[y_min, y_max]),
+            yaxis_title='Y',
+        ))
+    else:
+        f_output = go.Figure(layout=go.Layout(
+            xaxis=dict(range=[x_min, x_max]),
+            xaxis_title='X',
+            yaxis=dict(range=[y_min, y_max]),
+            yaxis_title='Y',
+        ))
+        mse = np.inf
+    # print(json.dumps(selectedData, indent=2))
+    return [f_output, f'Sampling Bias MSE = {mse:.3f}']
 
 
 if __name__ == '__main__':
     app.run_server(debug=True)
+
